@@ -1,0 +1,78 @@
+services:
+  # OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.88.0
+    container_name: goexpertotel-otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ../otel-collector/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    ports:
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+      - "8888:8888"   # Prometheus metrics
+      - "8889:8889"   # Prometheus exporter metrics
+    depends_on:
+      - zipkin
+    networks:
+      - goexpertotel-network
+
+  # Zipkin
+  zipkin:
+    image: openzipkin/zipkin:2.24
+    container_name: goexpertotel-zipkin
+    ports:
+      - "9411:9411"
+    environment:
+      - STORAGE_TYPE=mem
+    networks:
+      - goexpertotel-network
+
+  # Service A
+  service-a:
+    build:
+      context: ../../
+      dockerfile: deployments/docker/Dockerfile.service-a
+    container_name: goexpertotel-service-a
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - SERVICE_B_URL=http://service-b:8081
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_INSECURE=true
+      - OTEL_SERVICE_NAME=service-a
+    depends_on:
+      - service-b
+      - otel-collector
+    networks:
+      - goexpertotel-network
+
+  # Service B
+  service-b:
+    build:
+      context: ../../
+      dockerfile: deployments/docker/Dockerfile.service-b
+    container_name: goexpertotel-service-b
+    ports:
+      - "8081:8081"
+    environment:
+      - PORT=8081
+      - WEATHER_API_KEY=${WEATHER_API_KEY}
+      - WEATHER_API_URL=http://api.weatherapi.com/v1
+      - OPENCEP_API_URL=https://opencep.com
+      - CACHE_TTL=1h
+      - CACHE_CLEANUP=10m
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_INSECURE=true
+      - OTEL_SERVICE_NAME=service-b
+    depends_on:
+      - otel-collector
+    networks:
+      - goexpertotel-network
+
+networks:
+  goexpertotel-network:
+    driver: bridge
+
+volumes:
+  zipkin-data:

@@ -1,0 +1,52 @@
+@startuml
+!define RECTANGLE class
+!define ARROW -->
+
+skinparam backgroundColor white
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+
+' Definir componentes principais
+rectangle "Client\n(Frontend/\nAPI calls)" as Client
+rectangle "Service A\n(Input &\nValidation)" as ServiceA
+rectangle "Service B\n(Temp\nOrchestrator)" as ServiceB
+
+' OpenTelemetry Ecosystem
+package "OpenTelemetry Ecosystem" {
+  rectangle "OTEL Collector\n(Port 4317)" as OTELCollector
+  rectangle "Zipkin\n(Port 9411)" as Zipkin
+  rectangle "Traces\n(Distributed)" as Traces
+}
+
+' APIs externas
+rectangle "OpenCEP\n(External API)" as OpenCEP
+rectangle "WeatherAPI\n(External API)" as WeatherAPI
+
+' Fluxo principal
+Client --> ServiceA : HTTP Request
+ServiceA --> ServiceB : HTTP Request
+ServiceB --> OTELCollector : Traces
+ServiceA --> OTELCollector : Traces
+
+' Conexões do OpenTelemetry
+OTELCollector --> Zipkin : Export traces
+OTELCollector --> Traces : Distribute
+
+' Service B para APIs externas
+ServiceB --> OpenCEP : Location lookup
+ServiceB --> WeatherAPI : Weather data
+
+' Styling
+skinparam rectangle {
+  BackgroundColor lightblue
+  BorderColor darkblue
+  FontColor black
+}
+
+skinparam package {
+  BackgroundColor lightgray
+  BorderColor darkgray
+  FontStyle bold
+}
+
+@enduml

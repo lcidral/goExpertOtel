@@ -1,0 +1,408 @@
+openapi: 3.0.3
+info:
+  title: Sistema de Temperatura por CEP
+  description: |
+    API REST para consulta de temperatura por CEP brasileiro com OpenTelemetry.
+    
+    ## Funcionalidades
+    - Validação de CEP brasileiro (8 dígitos)
+    - Busca de localização via OpenCEP
+    - Consulta de temperatura via WeatherAPI
+    - Conversões automáticas (Celsius, Fahrenheit, Kelvin)
+    - Cache inteligente para performance
+    - Observabilidade completa com traces distribuídos
+    
+    ## Arquitetura
+    - **Service A** (8080): Entrada e validação
+    - **Service B** (8081): Orquestração de temperatura
+    - **OpenTelemetry**: Traces distribuídos
+    - **Zipkin**: Visualização de traces
+  version: 1.0.0
+  contact:
+    name: GoExpertOtel
+    url: https://github.com/lcidral/goExpertOtel
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Desenvolvimento - Service A
+  - url: http://localhost:8081
+    description: Desenvolvimento - Service B (interno)
+
+tags:
+  - name: temperatura
+    description: Consulta de temperatura por CEP
+  - name: saude
+    description: Endpoints de monitoramento
+  - name: cache
+    description: Operações de cache (Service B)
+
+paths:
+  /:
+    post:
+      tags:
+        - temperatura
+      summary: Consulta temperatura por CEP
+      description: |
+        Recebe um CEP brasileiro válido e retorna informações de temperatura 
+        da cidade correspondente em três escalas: Celsius, Fahrenheit e Kelvin.
+        
+        ## Fluxo de Processamento
+        1. Valida formato do CEP (8 dígitos numéricos)
+        2. Busca localização via OpenCEP API
+        3. Consulta temperatura atual via WeatherAPI
+        4. Converte temperaturas matematicamente
+        5. Retorna dados consolidados
+        
+        ## Cache Inteligente
+        - Localização: 24h (dados estáticos)
+        - Temperatura: 10min (dados dinâmicos)
+        - Resposta completa: 10min (otimização)
+      operationId: consultarTemperatura
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CEPRequest'
+            examples:
+              cep_sao_paulo:
+                summary: CEP de São Paulo
+                value:
+                  cep: "01310100"
+              cep_rio_janeiro:
+                summary: CEP do Rio de Janeiro  
+                value:
+                  cep: "20040020"
+              cep_belo_horizonte:
+                summary: CEP de Belo Horizonte
+                value:
+                  cep: "30112000"
+      responses:
+        '200':
+          description: Temperatura encontrada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemperatureResponse'
+              examples:
+                sucesso_sao_paulo:
+                  summary: Resposta para São Paulo
+                  value:
+                    city: "São Paulo"
+                    temp_C: 28.5
+                    temp_F: 83.3
+                    temp_K: 301.5
+                sucesso_rio:
+                  summary: Resposta para Rio de Janeiro
+                  value:
+                    city: "Rio de Janeiro"
+                    temp_C: 32.1
+                    temp_F: 89.8
+                    temp_K: 305.1
+        '404':
+          description: CEP não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                cep_nao_encontrado:
+                  summary: CEP inexistente
+                  value:
+                    message: "can not find zipcode"
+        '422':
+          description: CEP com formato inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                formato_invalido:
+                  summary: CEP com formato incorreto
+                  value:
+                    message: "invalid zipcode"
+                cep_muito_curto:
+                  summary: CEP com menos de 8 dígitos
+                  value:
+                    message: "invalid zipcode"
+                cep_com_letras:
+                  summary: CEP contendo letras
+                  value:
+                    message: "invalid zipcode"
+        '500':
+          description: Erro interno do servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                erro_interno:
+                  summary: Falha interna
+                  value:
+                    message: "Erro interno do servidor"
+
+  /health:
+    get:
+      tags:
+        - saude
+      summary: Health check do serviço
+      description: |
+        Endpoint de monitoramento que retorna o status de saúde do serviço.
+        
+        **Service A**: Status básico
+        **Service B**: Status + estatísticas de cache
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Serviço saudável
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/HealthResponseServiceA'
+                  - $ref: '#/components/schemas/HealthResponseServiceB'
+              examples:
+                service_a_health:
+                  summary: Service A Health
+                  value:
+                    status: "healthy"
+                    service: "service-a"
+                    timestamp: "2024-01-01T12:00:00Z"
+                service_b_health:
+                  summary: Service B Health (com cache stats)
+                  value:
+                    status: "healthy"
+                    service: "service-b"
+                    timestamp: "2024-01-01T12:00:00Z"
+                    cache_stats:
+                      total_items: 15
+                      location_items: 5
+                      weather_items: 8
+                      temp_items: 2
+
+  /cache/stats:
+    get:
+      tags:
+        - cache
+      summary: Estatísticas do cache (Service B apenas)
+      description: |
+        Retorna estatísticas detalhadas do sistema de cache do Service B.
+        
+        ## Métricas Disponíveis
+        - Total de itens em cache
+        - Itens por categoria (localização, temperatura, resposta)
+        - Útil para monitoramento e otimização
+      operationId: cacheStats
+      responses:
+        '200':
+          description: Estatísticas do cache
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CacheStats'
+              examples:
+                cache_com_dados:
+                  summary: Cache com dados
+                  value:
+                    total_items: 25
+                    location_items: 10
+                    weather_items: 12
+                    temp_items: 3
+                cache_vazio:
+                  summary: Cache vazio
+                  value:
+                    total_items: 0
+                    location_items: 0
+                    weather_items: 0
+                    temp_items: 0
+
+components:
+  schemas:
+    CEPRequest:
+      type: object
+      required:
+        - cep
+      properties:
+        cep:
+          type: string
+          pattern: '^[0-9]{8}$'
+          description: CEP brasileiro com exatamente 8 dígitos numéricos
+          example: "01310100"
+          minLength: 8
+          maxLength: 8
+      example:
+        cep: "01310100"
+
+    TemperatureResponse:
+      type: object
+      required:
+        - city
+        - temp_C
+        - temp_F
+        - temp_K
+      properties:
+        city:
+          type: string
+          description: Nome da cidade encontrada
+          example: "São Paulo"
+          minLength: 1
+        temp_C:
+          type: number
+          format: float
+          description: Temperatura em graus Celsius (1 casa decimal)
+          example: 28.5
+          minimum: -100
+          maximum: 100
+        temp_F:
+          type: number
+          format: float
+          description: Temperatura em graus Fahrenheit (1 casa decimal)
+          example: 83.3
+          minimum: -148
+          maximum: 212
+        temp_K:
+          type: number
+          format: float
+          description: Temperatura em Kelvin (1 casa decimal)
+          example: 301.5
+          minimum: 173
+          maximum: 373
+      example:
+        city: "São Paulo"
+        temp_C: 28.5
+        temp_F: 83.3
+        temp_K: 301.5
+
+    ErrorResponse:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          description: Mensagem de erro descritiva
+          enum:
+            - "invalid zipcode"
+            - "can not find zipcode"
+            - "Erro interno do servidor"
+          example: "invalid zipcode"
+      example:
+        message: "invalid zipcode"
+
+    HealthResponseServiceA:
+      type: object
+      required:
+        - status
+        - service
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: ["healthy", "unhealthy"]
+          description: Status atual do serviço
+          example: "healthy"
+        service:
+          type: string
+          enum: ["service-a"]
+          description: Nome do serviço
+          example: "service-a"
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp da verificação (ISO 8601)
+          example: "2024-01-01T12:00:00Z"
+
+    HealthResponseServiceB:
+      type: object
+      required:
+        - status
+        - service
+        - timestamp
+        - cache_stats
+      properties:
+        status:
+          type: string
+          enum: ["healthy", "unhealthy"]
+          description: Status atual do serviço
+          example: "healthy"
+        service:
+          type: string
+          enum: ["service-b"]
+          description: Nome do serviço
+          example: "service-b"
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp da verificação (ISO 8601)
+          example: "2024-01-01T12:00:00Z"
+        cache_stats:
+          $ref: '#/components/schemas/CacheStats'
+
+    CacheStats:
+      type: object
+      required:
+        - total_items
+        - location_items
+        - weather_items
+        - temp_items
+      properties:
+        total_items:
+          type: integer
+          description: Total de itens no cache
+          example: 15
+          minimum: 0
+        location_items:
+          type: integer
+          description: Itens de localização (OpenCEP, TTL 24h)
+          example: 5
+          minimum: 0
+        weather_items:
+          type: integer
+          description: Itens de temperatura (WeatherAPI, TTL 10min)
+          example: 8
+          minimum: 0
+        temp_items:
+          type: integer
+          description: Respostas completas em cache (TTL 10min)
+          example: 2
+          minimum: 0
+      example:
+        total_items: 15
+        location_items: 5
+        weather_items: 8
+        temp_items: 2
+
+  examples:
+    CEPsValidos:
+      summary: Exemplos de CEPs válidos
+      value:
+        - "01310100"  # São Paulo - SP
+        - "20040020"  # Rio de Janeiro - RJ
+        - "30112000"  # Belo Horizonte - MG
+        - "40070110"  # Salvador - BA
+        - "50050000"  # Recife - PE
+
+    CEPsInvalidos:
+      summary: Exemplos de CEPs inválidos
+      value:
+        - "123"       # Muito curto
+        - "123456789" # Muito longo
+        - "1234567a"  # Contém letra
+        - "12-345-678" # Com caracteres especiais
+        - ""          # Vazio
+
+  securitySchemes: {}
+
+# Configurações adicionais
+externalDocs:
+  description: Documentação completa no GitHub
+  url: https://github.com/lcidral/goExpertOtel
+
+# Webhook examples para testing
+webhooks: {}
+
+# Security (nenhuma autenticação por enquanto)
+security: []

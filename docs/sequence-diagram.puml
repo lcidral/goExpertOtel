@@ -1,0 +1,25 @@
+@startuml
+participant C as "Client"
+participant SA as "Service A"
+participant SB as "Service B"
+participant OC as "OpenCEP API"
+participant WA as "WeatherAPI"
+participant ZK as "Zipkin"
+
+C -> SA: POST /{"cep":"01310100"}
+SA -> SA: Validate CEP
+SA -> SB: POST /temperature
+SB -> SB: Check cache
+SB -> OC: GET location by CEP
+OC -> SB: Location data
+SB -> WA: GET weather by location
+WA -> SB: Weather data
+SB -> SB: Convert temperatures
+SB -> SB: Cache result
+SB -> SA: Temperature response
+SA -> C: 200 OK + temperature data
+
+note over SA,SB: Traces sent to OTEL Collector
+SA --> ZK: Distributed traces
+SB --> ZK: Distributed traces
+@enduml
